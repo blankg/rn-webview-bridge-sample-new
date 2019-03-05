@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>Hello Static World</title>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=320, user-scalable=no">
+    <style type="text/css">
+        body {
+            display: flex;
+            background: azure;
+            justify-content: center;
+            align-content: center;
+        }
+        button {
+            text-align: center;
+            align-self: center;
+        }
+    </style>
+</head>
+<body>
+<div id="container">
+    <button id="button" onclick="clickHandler();" >Send to RN</button>
+</div>
+<script>
+	var promiseChain = Promise.resolve();
+
+	var callbacks = {};
+
+	var init = function() {
+
+		const guid = function() {
+			function s4() {
+				return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+			}
+			return s4() + s4() + "-" + s4() + "-" + s4() + "-" + s4() + "-" + s4() + s4() + s4();
+		}
+
+
+		window.webViewBridge = {
+			/**
+			 * send message to the React-Native WebView onMessage handler
+			 * @param targetFunc - name of the function to invoke on the React-Native side
+			 * @param data - data to pass
+			 * @param success - success callback
+			 * @param error - error callback
+			 */
+			send: function(targetFunc, data, success, error) {
+
+				var msgObj = {
+					targetFunc: targetFunc,
+					data: data || {}
+				};
+
+				if (success || error) {
+					msgObj.msgId = guid();
+				}
+
+				var msg = JSON.stringify(msgObj);
+
+				promiseChain = promiseChain.then(function () {
+					return new Promise(function (resolve, reject) {
+						console.log("sending message " + msgObj.targetFunc);
+
+						if (msgObj.msgId) {
+							callbacks[msgObj.msgId] = {
+								onsuccess: success,
+								onerror: error
+							};
+						}
+
+						window.ReactNativeWebView.postMessage(msg);
+
+						resolve();
+					})
+				}).catch(function (e) {
+					console.error('rnBridge send failed ' + e.message);
+				});
+			},
+
+
+		};
+
+		window.addEventListener('message', function(e) {
+			console.log("message received from react native");
+
+			var message;
+			try {
+				message = JSON.parse(e.data)
+			}
+			catch(err) {
+				console.error("failed to parse message from react-native " + err);
+				return;
+			}
+
+			//trigger callback
+			if (message.args && callbacks[message.msgId]) {
+				if (message.isSuccessfull) {
+					callbacks[message.msgId].onsuccess.apply(null, message.args);
+				}
+				else {
+					callbacks[message.msgId].onerror.apply(null, message.args);
+				}
+				delete callbacks[message.msgId];
+			}
+
+		});
+	};
+
+	init();
+    window.counter = 0;
+    function clickHandler() {
+    	window.counter++;
+        window.webViewBridge.send('handleDataReceived', window.counter, function(res) {
+            window.document.getElementById("button").setAttribute("style", "background-color: " + res);
+        }, function(err) {
+			window.document.getElementById("container").setAttribute("style", "background-color: " + err);
+        });
+    }
+</script>
+
+</body>
+</html>
